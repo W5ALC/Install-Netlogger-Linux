@@ -1,0 +1,113 @@
+#!/bin/bash -x
+
+version="3.1.7"
+install_dir="/usr/local/share/netlogger"
+install_script="/usr/local/bin"
+url="https://github.com/W5ALC/Pictures/raw/main/NetLogger_3.1.7_Linux_x64.tgz"
+checksum="39b45a2ed07ebe2815490966c65a8796da8c89d0a4897312877c73c0e1e73a76"
+log_file="/var/log/netlogger_install.log"
+
+# Function to handle errors and log messages
+log_and_exit() {
+    printf "%s\n" "$1" | tee -a "$log_file"
+    exit "${2:-1}"
+}
+
+# Redirect stdout and stderr to log file
+exec > >(tee -a "$log_file") 2>&1
+
+# Check if the script is being run as root
+if [ "$EUID" -ne 0 ]; then
+    log_and_exit "This script must be run as root. Exiting." 1
+fi
+
+# Determine the package manager
+if command -v dnf &>/dev/null; then
+    pkg_manager="dnf"
+    install_cmd="dnf install -y"
+elif command -v yum &>/dev/null; then
+    pkg_manager="yum"
+    install_cmd="yum install -y"
+elif command -v apt-get &>/dev/null; then
+    pkg_manager="apt"
+    install_cmd="apt-get update && apt-get install -y"
+elif command -v pacman &>/dev/null; then
+    pkg_manager="pacman"
+    install_cmd="pacman -Syu --noconfirm"
+elif command -v zypper &>/dev/null; then
+    pkg_manager="zypper"
+    install_cmd="zypper install -y"
+elif command -v emerge &>/dev/null; then
+    pkg_manager="emerge"
+    install_cmd="emerge"
+else
+    log_and_exit "Unsupported package manager. Exiting." 2
+fi
+
+# Check for required packages
+required_packages=(wget tar)
+for package in "${required_packages[@]}"; do
+    if ! command -v "$package" &>/dev/null; then
+        $install_cmd "$package" || log_and_exit "Failed to install $package using $pkg_manager. Exiting." 3
+    fi
+done
+
+# Function to download and verify NetLogger tarball
+download_and_verify() {
+    if [ ! -f "netlogger_$version.tgz" ]; then
+        printf "Downloading NetLogger from %s...\n" "$url" | tee -a "$log_file"
+        wget "$url" -O "netlogger_$version.tgz" || log_and_exit "Failed to download NetLogger. Exiting." 4
+    fi
+
+    echo "$checksum  netlogger_$version.tgz" | sha256sum -c - || log_and_exit "Checksum verification failed. Exiting." 5
+}
+
+# Function to install NetLogger
+install_netlogger() {
+    if [ -d "$install_dir" ]; then
+        log_and_exit "Specified install directory already exists! Exiting." 6
+    fi
+
+    if [ ! -d "$install_script" ]; then
+        log_and_exit "Specified script install directory does not exist. Exiting." 7
+    fi
+
+    # Remove existing symlink if it exists
+    if [ -L "$install_script/netlogger" ]; then
+        rm -f "$install_script/netlogger" || log_and_exit "Failed to remove existing symlink. Exiting." 8
+    fi
+
+    mkdir -p "$install_dir" || log_and_exit "Failed to create install directory. Exiting." 9
+
+    current_dir=$(pwd)
+    (cd "$install_dir" && tar xvzf "$current_dir/netlogger_$version.tgz") || log_and_exit "Extraction failed. Exiting." 10
+
+    cat << END_OF_FILE > "$install_dir/netlogger.sh"
+#!/bin/bash
+NETLOGGER_QT_PLUGINS_PATH="$install_dir/plugins" LD_LIBRARY_PATH="$install_dir/lib" "$install_dir/netlogger" 2>/dev/null
+END_OF_FILE
+
+    chmod +x "$install_dir/netlogger.sh"
+
+    # Create the symlink
+    ln -s "$install_dir/netlogger.sh" "$install_script/netlogger" || log_and_exit "Failed to create symbolic link. Exiting." 11
+
+    (cd "$install_dir" && tar xvzf "netlogger_$version.tgz") || log_and_exit "Extraction failed. Exiting."
+
+    log_and_exit "NetLogger $version installed successfully. You can start it by typing 'netlogger' if $install_script is in your PATH. Otherwise, use '$install_script/netlogger'."
+}
+
+# Function to uninstall NetLogger
+uninstall_netlogger() {
+    rm -rf "$install_dir"
+    rm -f "$install_script/netlogger"
+    log_and_exit "NetLogger uninstalled successfully."
+}
+
+# Main script logic
+if [ "$1" == "uninstall" ]; then
+    uninstall_netlogger
+else
+    download_and_verify
+    install_netlogger
+fi
