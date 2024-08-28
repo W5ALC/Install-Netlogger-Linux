@@ -1,9 +1,9 @@
-#!/bin/bash -x
+#!/bin/bash
 
 version="3.1.7"
 install_dir="/usr/local/share/netlogger"
 install_script="/usr/local/bin"
-url="https://github.com/W5ALC/Pictures/raw/main/NetLogger_3.1.7_Linux_x64.tgz"
+url="https://github.com/W5ALC/Install-Netlogger-Linux/raw/main/NetLogger_3.1.7_Linux_x64.tgz"
 checksum="39b45a2ed07ebe2815490966c65a8796da8c89d0a4897312877c73c0e1e73a76"
 log_file="/var/log/netlogger_install.log"
 
@@ -97,12 +97,15 @@ END_OF_FILE
     log_and_exit "NetLogger $version installed successfully. You can start it by typing 'netlogger' if $install_script is in your PATH. Otherwise, use '$install_script/netlogger'."
 }
 
-# Function to uninstall NetLogger
 uninstall_netlogger() {
-    rm -rf "$install_dir"
-    rm -f "$install_script/netlogger"
+    # Get the original user's home directory
+    USER_HOME=$(eval echo "~$SUDO_USER")
+
+    rm -rf /usr/local/bin/netlogger /usr/local/share/netlogger/ /var/log/netlogger_install.log "$PWD/netlogger_3.1.7.tgz" "$USER_HOME/.config/NetLogger/"
+
     log_and_exit "NetLogger uninstalled successfully."
 }
+
 
 # Main script logic
 if [ "$1" == "uninstall" ]; then
